@@ -14,7 +14,14 @@ combined with a Left value encountered by the Disjunction, which supports
 behavior that is highly convenient for logging and error handling in an
 application.
 
-Here are some basic examples:
+Let's go through an example.
+
+####Setting up
+
+First we need to create a HasWDJ to get our WDJ type from. This again requires
+a Monoid for the Writers value and a Semigroup for the Disjunction Left.
+
+Let's start with some imports.
 
 ```scala
 scala> import com.localytics.{HasWDJ, WDJ}
@@ -31,72 +38,103 @@ import scalaz.std.list._
 
 scala> import scalaz.syntax.either._
 import scalaz.syntax.either._
+```
 
-scala> // A simple log type with a message and trace
-     | case class Log(msg: String, trace: List[String])
+Now we define a Log type. This will serve as our Disjunction Left type,
+but can also be extracted from a Right using the `wdj.logged()` method,
+by way of the Wr => Lf function we must provide.
+
+```scala
+scala> case class Log(msg: String, trace: List[String])
 defined class Log
+```
 
-scala> // A Semigroup for the error type
-     | val lappend: (Log, => Log) => Log =
-     |   (l1, l2) => Log(l1.msg, l1.trace ++ l2.trace)
+We need a Semigroup for Log to use it as the Disjunction Left.
+
+```scala
+scala> val lappend: (Log, => Log) => Log = (l1, l2) => Log(l1.msg, l1.trace ++ l2.trace)
 lappend: (Log, => Log) => Log = <function2>
 
 scala> implicit val esg: Semigroup[Log] = Semigroup.instance(lappend)
-esg: scalaz.Semigroup[Log] = scalaz.Semigroup$$anon$8@25df2ec5
+esg: scalaz.Semigroup[Log] = scalaz.Semigroup$$anon$8@6d4e462a
+```
 
-scala> // Create a HasWDJ[List[String], Log] by providing a function from
-     | // List[String] => Log
-     | implicit val hasWdjLSE = WDJ((ls: List[String]) => Log("", ls))
-hasWdjLSE: com.localytics.HasWDJ[List[String],Log] = com.localytics.WDJ$$anon$1@6f3e2cff
+We can now create a HasWDJ[List[String], Log] by providing a function from
+List[String] => Log, and get our WDJ from it.
+
+```scala
+scala> implicit val hasWdjLSE = WDJ((ls: List[String]) => Log("success", ls))
+hasWdjLSE: com.localytics.HasWDJ[List[String],Log] = com.localytics.WDJ$$anon$1@4ac87222
 
 scala> type WDJ[A] = HasWDJ[List[String], Log]#WDJ[A]
 defined type alias WDJ
+```
 
-scala> // Lift a known successful value of type A into a WDJ[A]
-     | 1.right[Log].toWdj[List[String]]
-res5: hasWdjLSE.WDJ[Int] = EitherT(WriterT((List(),\/-(1))))
+####Basic Use
 
-scala> // Lift a known failure into a WDJ[Int]
-     | Log("fubar", List()).left[Int].toWdj[List[String]]
-res7: hasWdjLSE.WDJ[Int] = EitherT(WriterT((List(),-\/(Log(fubar,List())))))
+With a HasWDJ in scope, we have access to syntax enhancements
+for working with the WDJ type.
 
-scala> // Take two operations that may fail, appending to writer
-     | // of the LDJ and sum their successful values
-     | val x = for {
+Lift a known successful value of type A into a WDJ[A]
+```scala
+scala> 1.right[Log].toWdj[List[String]]
+res0: hasWdjLSE.WDJ[Int] = EitherT(WriterT((List(),\/-(1))))
+```
+
+Lift a known failure into a WDJ[Int]
+```scala
+scala> Log("fubar", List()).left[Int].toWdj[List[String]]
+res1: hasWdjLSE.WDJ[Int] = EitherT(WriterT((List(),-\/(Log(fubar,List())))))
+```
+
+Take two operations that may fail, appending to writer
+of the WDJ and sum their successful values
+```scala
+scala> val x = for {
      |   a <- 1.right[Log].toWdj[List[String]].log(List("got 1"))
      |   b <- 2.right[Log].toWdj[List[String]].log(List("got 2"))
      | } yield a + b
 x: scalaz.EitherT[[A]scalaz.WriterT[[+X]X,List[String],A],Log,Int] = EitherT(WriterT((List(got 1, got 2),\/-(3))))
+```
 
-scala> // Extract the logged content (Writer contents merged with Left)
-     | x.logged()
-res11: Log = Log(,List(got 1, got 2))
+Extract the logged content (Writer contents merged with Left)
+```scala
+scala> x.logged()
+res2: Log = Log(success,List(got 1, got 2))
+```
 
-scala> // Take two operations that may fail, appending to writer of the
-     | // LDJ and sum their successful values
-     | 
-     | // Note one operation fails here
-     | val y = for {
+Take two operations that may fail, appending to writer of the
+WDJ and sum their successful values
+
+Note one operation fails here
+```scala
+scala> val y = for {
      |   a <- 1.right[Log].toWdj[List[String]].log(List("got 1"))
      |   b <- Log("failed", List()).left[Int].toWdj[List[String]].log(List("tried 2"))
      | } yield a + b
 y: scalaz.EitherT[[A]scalaz.WriterT[[+X]X,List[String],A],Log,Int] = EitherT(WriterT((List(got 1, tried 2),-\/(Log(failed,List())))))
+```
 
-scala> // Extract the logged content (Writer contents merged with Left)
-     | y.logged()
-res17: Log = Log(failed,List(got 1, tried 2))
+Extract the logged content (Writer contents merged with Left)
+```scala
+scala> y.logged()
+res3: Log = Log(failed,List(got 1, tried 2))
+```
 
-scala> //Bonus round
-     | 
-     | // Time an operation inside a DJW recording the elapsed period in
-     | // the Writer using the given Double => Wr function
-     | 1.right[Log].toWdj[List[String]].mapTimed(d => List("millis-to-add-3"++d.toString))(_ + 3)
-res22: scalaz.EitherT[[A]scalaz.WriterT[[+X]X,List[String],A],Log,Int] = EitherT(WriterT((List(millis-to-add-30.0),\/-(4))))
+####Bonus Features
 
-scala> // Turn a List[WDJ[A]] into a tuple of (List[Lf], List[A])
-     | // Useful for accumulating failures and extracting successes
-     | List(1.right[Log].toWdj[List[String]], Log("foo", List()).left[Int].toWdj[List[String]]).tuple()
-res25: (List[Log], List[Int]) = (List(Log(foo,List())),List(1))
+Time an operation inside a WDJ recording the elapsed period in
+the Writer using the given Double => Wr function
+```scala
+scala> 1.right[Log].toWdj[List[String]].mapTimed(d => List("millis-to-add-complete-"++d.toString))(_ + 3)
+res4: scalaz.EitherT[[A]scalaz.WriterT[[+X]X,List[String],A],Log,Int] = EitherT(WriterT((List(millis-to-add-complete-0.0),\/-(4))))
+```
+
+Turn a List[WDJ[A]] into a tuple of (List[Lf], List[A])
+Useful for accumulating failures and extracting successes
+```scala
+scala> List(1.right[Log].toWdj[List[String]], Log("foo", List()).left[Int].toWdj[List[String]]).tuple()
+res5: (List[Log], List[Int]) = (List(Log(foo,List())),List(1))
 ```
 
 What's the point?
