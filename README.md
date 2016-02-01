@@ -56,7 +56,7 @@ scala> val lappend: (Log, => Log) => Log = (l1, l2) => Log(l1.msg, l1.trace ++ l
 lappend: (Log, => Log) => Log = <function2>
 
 scala> implicit val esg: Semigroup[Log] = Semigroup.instance(lappend)
-esg: scalaz.Semigroup[Log] = scalaz.Semigroup$$anon$8@6d4e462a
+esg: scalaz.Semigroup[Log] = scalaz.Semigroup$$anon$8@1ab5fae
 ```
 
 We can now create a HasWDJ[List[String], Log] by providing a function from
@@ -64,7 +64,7 @@ List[String] => Log, and get our WDJ from it.
 
 ```scala
 scala> implicit val hasWdjLSE = WDJ((ls: List[String]) => Log("success", ls))
-hasWdjLSE: com.localytics.HasWDJ[List[String],Log] = com.localytics.WDJ$$anon$1@4ac87222
+hasWdjLSE: com.localytics.HasWDJ[List[String],Log] = com.localytics.WDJ$$anon$1@2ea3b48a
 
 scala> type WDJ[A] = HasWDJ[List[String], Log]#WDJ[A]
 defined type alias WDJ
@@ -127,7 +127,7 @@ Time an operation inside a WDJ recording the elapsed period in
 the Writer using the given Double => Wr function
 ```scala
 scala> 1.right[Log].toWdj[List[String]].mapTimed(d => List("millis-to-add-complete-"++d.toString))(_ + 3)
-res4: scalaz.EitherT[[A]scalaz.WriterT[[+X]X,List[String],A],Log,Int] = EitherT(WriterT((List(millis-to-add-complete-0.0),\/-(4))))
+res4: scalaz.EitherT[[A]scalaz.WriterT[[+X]X,List[String],A],Log,Int] = EitherT(WriterT((List(millis-to-add-complete-1.0),\/-(4))))
 ```
 
 Turn a List[WDJ[A]] into a tuple of (List[Lf], List[A])
@@ -149,6 +149,6 @@ end of your code flow.
 
 And having sugar like the mapTimed/flatMapTimed is cool too.
 
-*  Use LDJ
+*  Use WDJ
 *  ?
 *  Profit

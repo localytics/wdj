@@ -125,6 +125,6 @@ end of your code flow.
 
 And having sugar like the mapTimed/flatMapTimed is cool too.
 
-*  Use LDJ
+*  Use WDJ
 *  ?
 *  Profit
